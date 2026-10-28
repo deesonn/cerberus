@@ -33,6 +33,7 @@ import { FileMeta, FilesService } from '../core/files.service';
 
     <section class="card">
       <h2>Your files</h2>
+      @if (listNotice) { <div class="banner-ok" id="delete-ok">{{ listNotice }}</div> }
       @if (loading) {
         <p class="sub">Loading…</p>
       } @else if (files.length === 0) {
@@ -45,7 +46,16 @@ import { FileMeta, FilesService } from '../core/files.service';
                 <strong>{{ f.filename }}</strong>
                 <span>{{ f.uploaded_at | date: 'MMM d, y, h:mm a' }}</span>
               </div>
-              @if (decrypting === f.hash) {
+              @if (confirmingDelete === f.hash) {
+                <div class="confirm" id="delete-confirm">
+                  <span>Delete <strong>{{ f.filename }}</strong> permanently? This can't be undone.</span>
+                  <div class="confirm-actions">
+                    <button class="danger" id="delete-yes" (click)="confirmDelete(f)" [disabled]="busy">{{ busy ? 'Deleting…' : 'Delete permanently' }}</button>
+                    <button id="delete-no" (click)="cancelDelete()">Keep file</button>
+                  </div>
+                </div>
+                @if (deleteError) { <div class="field-error dl-error">{{ deleteError }}</div> }
+              } @else if (decrypting === f.hash) {
                 <div class="dl">
                   <input type="password" placeholder="Password for this file" [(ngModel)]="downloadPassword"
                          (keyup.enter)="decrypt(f)" class="dl-pw" />
@@ -54,7 +64,10 @@ import { FileMeta, FilesService } from '../core/files.service';
                 </div>
                 @if (downloadError) { <div class="field-error dl-error">{{ downloadError }}</div> }
               } @else {
-                <button class="open" (click)="startDecrypt(f)">Decrypt</button>
+                <div class="actions">
+                  <button class="open" (click)="startDecrypt(f)">Decrypt</button>
+                  <button class="delete-btn" (click)="askDelete(f)">Delete</button>
+                </div>
               }
             </li>
           }
@@ -78,6 +91,12 @@ import { FileMeta, FilesService } from '../core/files.service';
     .dl { display: flex; gap: 8px; grid-column: 1 / -1; }
     .dl-pw { flex: 1; }
     .dl-error { grid-column: 1 / -1; margin-top: 0; }
+    .actions { display: flex; gap: 8px; }
+    .delete-btn { color: var(--danger); }
+    .confirm { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+      background: rgba(255,107,107,.06); border: 1px solid rgba(255,107,107,.35); border-radius: 8px; padding: 12px 14px; font-size: 14px; }
+    .confirm-actions { display: flex; gap: 8px; }
+    button.danger { background: var(--danger); color: #1a0505; border-color: var(--danger); font-weight: 600; }
   `],
 })
 export class FilesComponent implements OnInit {
@@ -97,6 +116,10 @@ export class FilesComponent implements OnInit {
   downloadPassword = '';
   downloadError = '';
   busy = false;
+
+  confirmingDelete: string | null = null;
+  deleteError = '';
+  listNotice = '';
 
   async ngOnInit() {
     await this.refresh();
@@ -136,6 +159,8 @@ export class FilesComponent implements OnInit {
   }
 
   startDecrypt(f: FileMeta) {
+    this.confirmingDelete = null;
+    this.listNotice = '';
     this.decrypting = f.hash;
     this.downloadPassword = '';
     this.downloadError = '';
@@ -162,6 +187,35 @@ export class FilesComponent implements OnInit {
       this.cancel();
     } catch (err) {
       this.downloadError = err instanceof WrongPasswordError ? err.message : "Couldn't download this file. Please try again.";
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  askDelete(f: FileMeta) {
+    this.decrypting = null;
+    this.listNotice = '';
+    this.deleteError = '';
+    this.confirmingDelete = f.hash;
+  }
+
+  cancelDelete() {
+    this.confirmingDelete = null;
+    this.deleteError = '';
+  }
+
+  async confirmDelete(f: FileMeta) {
+    this.busy = true;
+    this.deleteError = '';
+    try {
+      await this.filesApi.delete(f.hash);
+      this.confirmingDelete = null;
+      this.listNotice = `Deleted "${f.filename}".`;
+      await this.refresh();
+    } catch (err) {
+      const e = err as HttpErrorResponse;
+      this.deleteError = e.status === 404 ? 'That file no longer exists.' : "Couldn't delete this file. Nothing was removed — please try again.";
+      if (e.status === 404) await this.refresh();
     } finally {
       this.busy = false;
     }

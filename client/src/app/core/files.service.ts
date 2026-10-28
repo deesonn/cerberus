@@ -26,6 +26,10 @@ export class FilesService {
     return firstValueFrom(this.http.post<FileMeta>(`${API}/file/upload`, form, { headers: this.auth.authHeaders() }));
   }
 
+  delete(hash: string): Promise<unknown> {
+    return firstValueFrom(this.http.delete(`${API}/file/${hash}`, { headers: this.auth.authHeaders() }));
+  }
+
   download(hash: string): Promise<ArrayBuffer> {
     return firstValueFrom(
       this.http.get(`${API}/file/${hash}`, { headers: this.auth.authHeaders(), responseType: 'arraybuffer' }),

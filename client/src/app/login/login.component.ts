@@ -1,6 +1,6 @@
 import { Component, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { AuthService } from '../core/auth.service';
 
@@ -13,6 +13,9 @@ import { AuthService } from '../core/auth.service';
       <h1>Sign in</h1>
       <p class="sub">Your files are encrypted in your browser before they ever reach the server.</p>
 
+      @if (notice) {
+        <div class="banner-notice" id="session-notice">{{ notice }}</div>
+      }
       @if (formError) {
         <div class="banner-error" id="form-error">{{ formError }}</div>
       }
@@ -43,17 +46,25 @@ import { AuthService } from '../core/auth.service';
     .row { margin: 16px 0; }
     form button { width: 100%; margin-top: 8px; }
     .banner-error { margin-bottom: 8px; }
+    .banner-notice { margin-bottom: 12px; color: #ffcf5c; background: rgba(255,207,92,.08); border: 1px solid rgba(255,207,92,.35); padding: 10px 12px; border-radius: 8px; font-size: 14px; }
   `],
 })
 export class LoginComponent {
   private auth = inject(AuthService);
   private router = inject(Router);
+  private route = inject(ActivatedRoute);
 
   username = '';
   password = '';
   submitted = false;
   busy = false;
   formError = '';
+  notice =
+    this.route.snapshot.queryParamMap.get('reason') === 'expired'
+      ? 'Your session expired. Please sign in again.'
+      : this.route.snapshot.queryParamMap.get('reason') === 'signin'
+        ? 'Please sign in to continue.'
+        : '';
 
   async submit() {
     this.submitted = true;

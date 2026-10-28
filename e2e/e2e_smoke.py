@@ -44,10 +44,12 @@ with sync_playwright() as p:
     # login-missing-username / password
     page.fill("#password", "whatever")
     page.click("#submit")
+    page.wait_for_selector("#username-error")
     check("login-missing-username: red error under username", page.locator("#username-error").is_visible())
     page.fill("#username", "daniel")
     page.fill("#password", "")
     page.click("#submit")
+    page.wait_for_selector("#password-error")
     check("login-missing-password: red error under password", page.locator("#password-error").is_visible())
     shot("02-login-required-fields.png")
 

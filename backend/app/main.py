@@ -1,6 +1,8 @@
 import hashlib
+import os
 import secrets
 import time
+from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,6 +18,7 @@ from .security import verify_password
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_FAILED_LOGINS = 5
 LOCKOUT_SECONDS = 60
+SESSION_LIFETIME = timedelta(hours=float(os.environ.get("CERBERUS_SESSION_HOURS", "8")))
 
 Base.metadata.create_all(bind=engine)
 
@@ -43,6 +46,13 @@ def current_user(authorization: str | None = Header(default=None), db: DbSession
     session = db.get(models.Session, token)
     if session is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
+    # SQLite hands back naive datetimes; they were stored as UTC.
+    age = datetime.now(timezone.utc).replace(tzinfo=None) - session.created_at.replace(tzinfo=None)
+    if age > SESSION_LIFETIME:
+        # Remove the dead session so it can never be revived, and tell the client why.
+        db.delete(session)
+        db.commit()
+        raise HTTPException(status_code=401, detail="Session expired")
     return db.get(models.User, session.user_id)
 
 
@@ -135,3 +145,18 @@ def get_file(file_hash: str, user: models.User = Depends(current_user), db: DbSe
         # 404 (not 403) so a user can't probe for other people's file hashes.
         raise HTTPException(status_code=404, detail="File not found")
     return Response(content=row.ciphertext, media_type="application/octet-stream")
+
+
+@app.delete("/file/{file_hash}")
+def delete_file(file_hash: str, user: models.User = Depends(current_user), db: DbSession = Depends(get_db)):
+    row = (
+        db.query(models.StoredFile)
+        .filter(models.StoredFile.hash == file_hash, models.StoredFile.owner_id == user.id)
+        .first()
+    )
+    if row is None:
+        # Same 404 whether the file doesn't exist or belongs to someone else.
+        raise HTTPException(status_code=404, detail="File not found")
+    db.delete(row)
+    db.commit()
+    return {"status": "deleted", "hash": file_hash}
