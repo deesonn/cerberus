@@ -21,7 +21,9 @@ The server never receives the password, the key, or the plaintext. AES-GCM authe
 - Sessions last 8 hours (`CERBERUS_SESSION_HOURS` to change). An expired session is deleted on first use and the API answers `401 Session expired`; the Angular client catches any 401 on a protected call, clears its token, and sends the user to `/login` with a notice instead of leaving them on a screen where everything fails.
 - Wrong username and wrong password produce the identical 401 message, so the form can't be used to discover usernames.
 - 5 failed logins on one username locks that username for 60 seconds (in-memory; fine for a single-instance MVP).
-- Accounts are created only through the admin CLI, never through the web app.
+- Accounts are created only by administrators: through the CLI or the admin-only `/admin/users` routes. Both call the same `create_account()` in `accounts.py`, so username and password rules can't differ between them. There is no public sign-up.
+- Changing your password signs out every other session for that account, and wrong "current password" guesses count toward the same 5-strikes lockout as login.
+- Admin routes sit behind a `require_admin` dependency (403 for everyone else) and return only counts, never file contents or password hashes. An admin can't delete their own account, which also protects the last administrator.
 
 ## Known limits (MVP)
 - No password recovery: lose a file's password and the file is gone. The UI says so before upload.
@@ -40,3 +42,7 @@ The server never receives the password, the key, or the plaintext. AES-GCM authe
 | GET | /file/{hash} | return an encrypted blob (owner only) |
 | DELETE | /file/{hash} | permanently delete a stored blob (owner only) |
 | GET | /health | server + database check |
+| POST | /auth/change-password | change your sign-in password; signs out your other sessions |
+| GET | /admin/users | (admin) accounts with file counts and storage |
+| POST | /admin/users | (admin) create an account |
+| DELETE | /admin/users/{id} | (admin) delete an account, its files and sessions |

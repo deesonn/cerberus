@@ -35,3 +35,14 @@ def test_unreachable_database_gives_clear_error(capsys, monkeypatch):
     monkeypatch.setattr(cli, "SessionLocal", sessionmaker(bind=bad))
     assert cli.main(["create-admin", "boss", "--password", "supersecret1"]) == 2
     assert "couldn't reach the database" in capsys.readouterr().err
+
+
+def test_cli_rejects_a_bad_username(capsys):
+    assert cli.main(["create-user", "has space", "--password", "supersecret1"]) == 1
+    assert "Username must be" in capsys.readouterr().err
+
+
+def test_cli_duplicate_check_ignores_case(capsys):
+    cli.main(["create-admin", "boss", "--password", "supersecret1"])
+    assert cli.main(["create-user", "BOSS", "--password", "supersecret1"]) == 1
+    assert "already exists" in capsys.readouterr().err

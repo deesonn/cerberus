@@ -5,35 +5,27 @@ import sys
 
 from sqlalchemy.exc import OperationalError
 
-from . import models
+from .accounts import AccountError, create_account
 from .database import Base, SessionLocal, engine
-from .security import hash_password
 
 
 def _create(username: str, password: str | None, is_admin: bool) -> int:
-    username = username.strip()
-    if not username:
-        print("Error: username can't be blank.", file=sys.stderr)
-        return 1
     if password is None:
         password = getpass.getpass("Password: ")
         if password != getpass.getpass("Confirm password: "):
             print("Error: passwords didn't match.", file=sys.stderr)
             return 1
-    if len(password) < 8:
-        print("Error: password must be at least 8 characters.", file=sys.stderr)
-        return 1
     try:
         Base.metadata.create_all(bind=engine)
         db = SessionLocal()
         try:
-            if db.query(models.User).filter(models.User.username == username).first():
-                print(f"Error: username '{username}' already exists. Nothing was changed.", file=sys.stderr)
-                return 1
-            db.add(models.User(username=username, password_hash=hash_password(password), is_admin=is_admin))
-            db.commit()
+            user = create_account(db, username, password, is_admin=is_admin)
+            username = user.username
         finally:
             db.close()
+    except AccountError as exc:
+        print(f"Error: {exc.message}", file=sys.stderr)
+        return 1
     except OperationalError as exc:
         print(f"Error: couldn't reach the database ({exc.orig}). Check CERBERUS_DB_URL and permissions.", file=sys.stderr)
         return 2

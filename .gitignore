@@ -6,4 +6,3 @@ node_modules/
 client/dist/
 client/.angular/
 .venv/
-.DS_Store

@@ -6,6 +6,7 @@ import { firstValueFrom } from 'rxjs';
 export const API = 'http://localhost:8000';
 const TOKEN_KEY = 'cerberus.token';
 const USER_KEY = 'cerberus.user';
+const ADMIN_KEY = 'cerberus.admin';
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
@@ -18,16 +19,30 @@ export class AuthService {
   get username(): string | null {
     return sessionStorage.getItem(USER_KEY);
   }
+  get isAdmin(): boolean {
+    return sessionStorage.getItem(ADMIN_KEY) === '1';
+  }
   get loggedIn(): boolean {
     return !!this.token;
   }
 
   async login(username: string, password: string): Promise<void> {
     const res = await firstValueFrom(
-      this.http.post<{ token: string; username: string }>(`${API}/auth/login`, { username, password }),
+      this.http.post<{ token: string; username: string; is_admin: boolean }>(`${API}/auth/login`, { username, password }),
     );
     sessionStorage.setItem(TOKEN_KEY, res.token);
     sessionStorage.setItem(USER_KEY, res.username);
+    sessionStorage.setItem(ADMIN_KEY, res.is_admin ? '1' : '0');
+  }
+
+  changePassword(currentPassword: string, newPassword: string): Promise<{ other_sessions_signed_out: number }> {
+    return firstValueFrom(
+      this.http.post<{ other_sessions_signed_out: number }>(
+        `${API}/auth/change-password`,
+        { current_password: currentPassword, new_password: newPassword },
+        { headers: this.authHeaders() },
+      ),
+    );
   }
 
   async logout(): Promise<void> {
@@ -43,6 +58,7 @@ export class AuthService {
   clear(): void {
     sessionStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(USER_KEY);
+    sessionStorage.removeItem(ADMIN_KEY);
   }
 
   authHeaders(): Record<string, string> {
