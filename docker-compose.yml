@@ -1,0 +1,23 @@
+# One command to run Cerberus:  docker compose up --build
+# Open http://localhost:8080
+services:
+  backend:
+    build: ./backend
+    environment:
+      CERBERUS_DB_URL: sqlite:////data/cerberus.db
+      CERBERUS_SESSION_HOURS: "8"
+      CERBERUS_QUOTA_MB: "200"
+    volumes:
+      - cerberus-data:/data
+    restart: unless-stopped
+
+  web:
+    build: ./client
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  cerberus-data:

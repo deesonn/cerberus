@@ -10,6 +10,13 @@ export interface FileMeta {
   uploaded_at: string;
 }
 
+export interface StorageInfo {
+  used_bytes: number;
+  quota_bytes: number;
+  file_count: number;
+  max_upload_bytes: number;
+}
+
 @Injectable({ providedIn: 'root' })
 export class FilesService {
   private http = inject(HttpClient);
@@ -19,11 +26,21 @@ export class FilesService {
     return firstValueFrom(this.http.get<FileMeta[]>(`${API}/files`, { headers: this.auth.authHeaders() }));
   }
 
+  storage(): Promise<StorageInfo> {
+    return firstValueFrom(this.http.get<StorageInfo>(`${API}/me/storage`, { headers: this.auth.authHeaders() }));
+  }
+
   upload(ciphertext: Uint8Array, filename: string): Promise<FileMeta> {
     const form = new FormData();
     form.append('file', new Blob([ciphertext]), 'blob');
     form.append('filename', filename);
     return firstValueFrom(this.http.post<FileMeta>(`${API}/file/upload`, form, { headers: this.auth.authHeaders() }));
+  }
+
+  rename(hash: string, filename: string): Promise<{ hash: string; filename: string }> {
+    return firstValueFrom(
+      this.http.patch<{ hash: string; filename: string }>(`${API}/file/${hash}`, { filename }, { headers: this.auth.authHeaders() }),
+    );
   }
 
   delete(hash: string): Promise<unknown> {

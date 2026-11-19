@@ -2,8 +2,16 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
+import { apiBase } from './api-base';
 
-export const API = 'http://localhost:8000';
+export const API = apiBase(window.location);
+
+export interface SessionInfo {
+  id: string;
+  created_at: string;
+  expires_at: string;
+  current: boolean;
+}
 const TOKEN_KEY = 'cerberus.token';
 const USER_KEY = 'cerberus.user';
 const ADMIN_KEY = 'cerberus.admin';
@@ -43,6 +51,18 @@ export class AuthService {
         { headers: this.authHeaders() },
       ),
     );
+  }
+
+  sessions(): Promise<SessionInfo[]> {
+    return firstValueFrom(this.http.get<SessionInfo[]>(`${API}/auth/sessions`, { headers: this.authHeaders() }));
+  }
+
+  revokeSession(id: string): Promise<unknown> {
+    return firstValueFrom(this.http.delete(`${API}/auth/sessions/${id}`, { headers: this.authHeaders() }));
+  }
+
+  logoutOthers(): Promise<{ signed_out: number }> {
+    return firstValueFrom(this.http.post<{ signed_out: number }>(`${API}/auth/logout-others`, {}, { headers: this.authHeaders() }));
   }
 
   async logout(): Promise<void> {

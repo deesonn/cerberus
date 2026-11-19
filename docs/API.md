@@ -9,10 +9,15 @@ Routes marked **admin** need a token that belongs to an administrator.
 | GET | `/health` | anyone | Runs `SELECT 1` against the database. `200 {"status":"ok"}` proves the server *and* the database are up. |
 | POST | `/auth/login` | anyone | Body `{username, password}`. Checks the bcrypt hash, creates a random session token and returns `{token, username, is_admin}`. |
 | POST | `/auth/logout` | anyone | Deletes the caller's session row so the token stops working. Always `200`, even if the session was already gone. |
+| GET | `/auth/sessions` | login | Every live login on the caller's account: `{id, created_at, expires_at, current}`. `id` is a short hash of the token, so the list never reveals a token. |
+| DELETE | `/auth/sessions/{id}` | login | Signs out one other device. `404` if the id isn't one of the caller's live sessions (so another user's id looks the same as a made-up one). `400` if it is the caller's own current session. |
+| POST | `/auth/logout-others` | login | Signs out every device on the account except the caller's. Returns `{signed_out: n}`. |
 | POST | `/auth/change-password` | login | Body `{current_password, new_password}`. See below. |
 | GET | `/files` | login | Metadata (name, size, date, hash) of the caller's files only. Never contents. |
-| POST | `/file/upload` | login | Stores the encrypted blob the browser sends (max 25 MB) and returns its SHA-256 hash. |
+| GET | `/me/storage` | login | `{used_bytes, quota_bytes, file_count, max_upload_bytes}` for the caller only. Sizes, never contents. Feeds the usage bar. |
+| POST | `/file/upload` | login | Stores the encrypted blob the browser sends (max 25 MB per file, and the caller's total must stay under the storage quota) and returns its SHA-256 hash. |
 | GET | `/file/{hash}` | login | Returns the stored ciphertext, but only to the file's owner. |
+| PATCH | `/file/{hash}` | login | Body `{filename}`. Renames one of the caller's own files. Only the display name changes: the encrypted bytes and the hash stay the same. `404` for a missing or someone else's file, `422` for a bad name. |
 | DELETE | `/file/{hash}` | login | Permanently deletes one of the caller's own files. |
 | GET | `/admin/users` | admin | Every account with `file_count` and `total_bytes`. See below. |
 | POST | `/admin/users` | admin | Creates an account. See below. |
@@ -55,6 +60,27 @@ Body `{username, password, is_admin?}`; answers `201 {id, username, is_admin}`. 
 2. `400 "You can't delete your own account"` if the admin targets themselves. A side effect is that the last administrator can never be deleted by accident.
 3. Otherwise deletes the user's files, then their sessions (so any open browser is signed out immediately), then the user, and returns `{"status":"deleted","username":...,"files_removed":N}`.
 
+## Filenames
+
+Upload and rename share one set of rules (`_clean_filename` in `main.py`): spaces at either end are trimmed, the name can't be empty, can't be longer than 255 characters, and can't contain `/`, `\\` or control characters. Anything else answers `422` with a plain message. Two files may have the same name, because a file is identified by its hash.
+
+## Security headers
+
+Every response, errors included, carries `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer` and `Cache-Control: no-store`. They're added by one middleware in `main.py` (`add_security_headers`), so no route can forget them.
+
+## Storage quota
+
+`POST /file/upload` adds the new blob's size to what the caller already stores. If the total would pass `CERBERUS_QUOTA_MB` (default 200) it answers `413 "Storage limit reached (N MB). Delete a file to make room."` and saves nothing. Filling the quota exactly is allowed. A duplicate file is reported (`409`) before the quota is checked. Every account has its own quota.
+
+## Settings (environment variables)
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `CERBERUS_DB_URL` | `sqlite:///./cerberus.db` | Database location |
+| `CERBERUS_SESSION_HOURS` | `8` | How long a login lasts |
+| `CERBERUS_QUOTA_MB` | `200` | Storage each account may use |
+| `CERBERUS_CORS_ORIGINS` | `http://localhost:4200` | Comma-separated browser origins allowed to call the API |
+
 ## Status codes at a glance
 
-`200` ok / `201` created / `400` not allowed on yourself / `401` not signed in or session expired / `403` signed in but not allowed (wrong current password, or not an admin) / `404` not found (also used when a file belongs to someone else) / `409` username already taken / `413` upload too large / `422` input failed validation / `429` too many failed attempts.
+`200` ok / `201` created / `400` not allowed on yourself / `401` not signed in or session expired / `403` signed in but not allowed (wrong current password, or not an admin) / `404` not found (also used when a file belongs to someone else) / `409` username already taken / `413` upload too large or storage quota reached / `422` input failed validation / `429` too many failed attempts.

@@ -25,6 +25,19 @@ The server never receives the password, the key, or the plaintext. AES-GCM authe
 - Changing your password signs out every other session for that account, and wrong "current password" guesses count toward the same 5-strikes lockout as login.
 - Admin routes sit behind a `require_admin` dependency (403 for everyone else) and return only counts, never file contents or password hashes. An admin can't delete their own account, which also protects the last administrator.
 
+## Hardening and deployment (week 4)
+- One middleware adds `nosniff`, `X-Frame-Options: DENY`, `no-referrer` and `no-store` to every response.
+- Each account has a storage quota (default 200 MB). The check happens on the server, so editing the browser can't get around it; the client also checks the 25 MB per-file limit first so a too-big file never starts uploading.
+- Allowed browser origins come from `CERBERUS_CORS_ORIGINS` instead of being hardcoded.
+- The client picks its API address in `core/api-base.ts`: `ng serve` (port 4200) talks to port 8000 directly, anything else uses `/api` on its own origin. In Docker, nginx serves the built client and forwards `/api/` to the backend, so the browser only ever talks to one origin. See `docs/DEPLOY.md`.
+- GitHub Actions (`.github/workflows/ci.yml`) runs the backend tests and the client build and unit tests on every push.
+
+## Signed-in devices and renaming (week 5)
+- A login is one row in `sessions`. The Account page lists the caller's live rows. The public id of a row is the first 16 hex characters of the SHA-256 of its token: enough to tell rows apart, useless for logging in. No database change was needed, so existing databases keep working.
+- Sessions are looked up only through the caller's own rows, so revoking someone else's id is just a `404`. The caller's current session can't be revoked from the list (that's what Log out is for), so nobody locks themselves out by accident.
+- `POST /auth/logout-others` is the same cleanup `change-password` already did, available on its own.
+- Renaming changes only `files.filename`. The file's identity is the SHA-256 of its ciphertext, which doesn't change, so downloads and decryption are unaffected. The browser checks the name first (same rules as the server) and doesn't send a request when the name is unchanged.
+
 ## Known limits (MVP)
 - No password recovery: lose a file's password and the file is gone. The UI says so before upload.
 - Max upload is 25 MB (whole file is encrypted in memory in the browser).
@@ -42,6 +55,7 @@ The server never receives the password, the key, or the plaintext. AES-GCM authe
 | GET | /file/{hash} | return an encrypted blob (owner only) |
 | DELETE | /file/{hash} | permanently delete a stored blob (owner only) |
 | GET | /health | server + database check |
+| GET | /me/storage | how much of your storage quota is used |
 | POST | /auth/change-password | change your sign-in password; signs out your other sessions |
 | GET | /admin/users | (admin) accounts with file counts and storage |
 | POST | /admin/users | (admin) create an account |
